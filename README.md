@@ -9,6 +9,9 @@ the client or the server and intercept or alter the exchanged data.
 The primary use-case is to hide non-mail folders of a Kolab server by
 filtering LSUB/LIST/XLIST responses.
 
+**Warning: this is only a proof-of-concept application and neither
+fully tested nor reviewed for security issues.**<br/>
+**DON'T USE IT IN A PRODUCTIVE ENVIRONMENT!**
 
 Installation
 ------------
