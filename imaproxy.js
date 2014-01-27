@@ -25,6 +25,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+"use strict";
+
 var fs = require("fs"),
     tls = require("tls"),
     net = require("net"),
@@ -90,7 +92,7 @@ function IMAProxy(config)
             }
 
             try {
-                plugin = require('./plugins/' + files[k]);
+                var plugin = require('./plugins/' + files[k]);
                 var p = new plugin(self);
                 p.init();
                 plugins.push(p);
@@ -120,13 +122,6 @@ function IMAProxy(config)
             event.client = connectionToClient;
             event.state = state;
             return event;
-        }
-
-        function cleanup() {
-            delete state;
-            delete prefix;
-            // if (typeof gc == 'function')
-            //    gc();
         }
 
         connectionToClient.on("data", function(data) {
@@ -162,8 +157,6 @@ function IMAProxy(config)
                 state.isConnected = false;
                 connectionToServer.end();
             }
-            delete connectionToClient;
-            cleanup();
         });
 
 
@@ -230,8 +223,6 @@ function IMAProxy(config)
                 state.isConnected = false;
                 connectionToClient.end();
             }
-            delete connectionToServer;
-            cleanup();
         });
 
         // connect to IMAP server
@@ -269,7 +260,7 @@ function IMAProxy(config)
     function parseIMAPCommand(data)
     {
         var lines = data.toString().split(/\r?\n/),
-            tokens = String(lines[0]).split(/ +/);
+            tokens = String(lines[0]).split(/ +/),
             cmd = { seq: 0, command: '__DATA__', write: true };
 
         if (tokens.length > 1 && tokens[1].match(/^[a-z]+$/i)) {
