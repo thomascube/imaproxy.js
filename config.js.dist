@@ -1,0 +1,28 @@
+/**
+ * IMAProxy configuration
+ */
+
+module.exports = {
+
+    // host name or URL to IMAP server
+    imap_server: "localhost",
+
+    // disable TLS certificate validation for connections to imap_server
+    tls_nocheck_certs: true,
+
+    // local port to bind the proxy to
+    bind_port: 9993,
+
+    // create server with SSL
+    ssl: true,
+    ssl_key:  './ssl/host.key',
+    ssl_cert: './ssl/localhost.crt',
+    ssl_ca:   './ssl/localhost.crt',
+
+    // log connections
+    conn_log: true,
+
+    // enable IMAP debug logging
+    debug_log:   true
+
+};
