@@ -34,6 +34,7 @@ function Mailonly(proxy)
     var TYPE_ANNOTATION = "/vendor/kolab/folder-type";
     var listening = false;
     var capabilities = {};
+    var metadata = [];
     var proc = [];
 
     // public methods
@@ -47,6 +48,7 @@ function Mailonly(proxy)
         proxy.clientEmitter.on('LSUB', clientList);
         proxy.clientEmitter.on('LIST', clientList);
         proxy.clientEmitter.on('XLIST', clientList);
+        proxy.clientEmitter.on('__DISCONNECT__', clientDisconnect);
         proxy.serverEmitter.once('CAPABILITY', capabilityResponse);
     }
 
@@ -76,17 +78,18 @@ function Mailonly(proxy)
             proxy.clientEmitter.removeListener('LSUB', clientList);
             proxy.clientEmitter.removeListener('LIST', clientList);
             proxy.clientEmitter.removeListener('XLIST', clientList);
+            proxy.clientEmitter.removeListener('__DISCONNECT__', clientDisconnect);
             return;
         }
 
-        // register LSUB/LIST request for this connection
+        // register new LSUB/LIST/XLIST request for this connection
         if (!proc[event.state.ID])
-            proc[event.state.ID] = { buffer:[], listings:{}, pending:0 };
+            proc[event.state.ID] = { buffer:'', listings:{}, pending:0 };
 
         var lines = data.toString().trim().split(/\r?\n/);
         for (var i=0; i < lines.length; i++) {
             var req = imap.tokenizeData(lines[i], 2),
-                listing = { seq: req[0], command: req[1], buffer: [], metadata: {}, annotations: 0 };
+                listing = { seq: req[0], command: req[1], buffer: [] };
 
             proc[event.state.ID].listings['A' + listing.seq] = listing;
             proc[event.state.ID].pending++;
@@ -94,11 +97,7 @@ function Mailonly(proxy)
 
         // listen to server responses
         if (!listening) {
-            proxy.serverEmitter.on('OK', serverResponse);
-            proxy.serverEmitter.on('LSUB', serverResponse);
-            proxy.serverEmitter.on('LIST', serverResponse);
-            proxy.serverEmitter.on('XLIST', serverResponse);
-            proxy.serverEmitter.on('ANNOTATION', serverResponse);
+            proxy.serverEmitter.on('__DATA__', serverResponse);
             listening = true;
         }
     }
@@ -108,129 +107,148 @@ function Mailonly(proxy)
      */
     function serverResponse(event, data)
     {
-        var req, lines, response, id = event.state.ID;
+        var req, last, response, id = event.state.ID;
+
+        // buffering is active for this connection
         if (req = proc[id]) {
             event.write = false;  // don't forward to client
 
             response = imap.parseResponse(data);
-            lines = response.lines;
+            last = response.lines.pop();
 
-            // parse annotation response
-            if (event.command == 'ANNOTATION' || req.listings[response.seq]) {
-                var mbox, metadata;
+            // GETANNOTATION completed
+            if (response.seq && req.listings[response.seq]) {
+                var lines = (req.buffer + data.toString()).trim().split(/\r?\n/);
                 for (var i=0; i < lines.length; i++) {
                     var ann = imap.tokenizeData(lines[i], 5),
                         values = ann[4] || [];
 
-                    // store folder type information
-                    if (ann[1] == 'ANNOTATION' && ann[3] == TYPE_ANNOTATION && values.length) {
-                        mbox = ann[2];
-                        metadata = (values[1] || values[3] || '').replace(/\..+$/, '');
+                    if (metadata[id] == undefined) {
+                        metadata[id] = {};
                     }
-                    // add annotation on OK; also accept "NO Mailbox does not exist" responses
-                    else if (ann[1] == 'OK' || ann[1] == 'NO') {
-                        processAnnotation(id, ann[0], mbox, metadata, event);
-                        mbox = null; metadata = null;
+
+                    // store folder type in global (per-connection) memory for subsequent requests (e.g. XLIST + LSUB)
+                    if (ann[1] == 'ANNOTATION' && ann[3] == TYPE_ANNOTATION && values.length) {
+                        metadata[id][ann[2]] = (values[1] || values[3] || '').replace(/\..+$/, '');
                     }
                 }
+
+                // clear buffer
+                req.buffer = '';
+
+                // filter buffered listing and send it to client
+                sendFilteredList(id, response.seq, event);
             }
             else {
-                // read server response line by line
-                for (var rec, i=0; i < lines.length; i++) {
-                    req.buffer.push(lines[i]);
+                req.buffer += data.toString();
 
-                    // process buffered data after a tagged line
-                    rec = String(lines[i]).split(/ +/);
-                    if (rec[0] != '*') {
-                        // pipe through unrelated results
-                        event.write = !processListing(id, rec[0], req.buffer, event);
-                        req.buffer = [];
-                    }
+                // command done
+                if (response.seq) {
+                    // pipe through unrelated results
+                    event.write = !processListing(id, response.seq, req.buffer, event);
+
+                    // send all buffered data to client
+                    if (event.write && req.buffer)
+                        event.result = req.buffer;
+
+                    // clear buffer
+                    req.buffer = '';
                 }
             }
         }
     }
 
     /**
-     * Process the colelcted server response on a listing command
+     * Process the collected server response on a listing command
      */
     function processListing(id, seq, buffer, event)
     {
-        var req = proc[id], listing = req.listings['A' + seq];
+        var req = proc[id], listing = req.listings['A' + seq],
+            lines = buffer.trim().split(/\r?\n/);
 
-        if (!listing || buffer.length < 2)
+        // tag doesn't match an active listing command or response is empty
+        if (!listing || lines.length < 2) {
+            listingDone(id, 'A'+seq);
             return false;
+        }
 
         // remove response line
-        buffer.pop();
+        lines.pop();
 
         // get metadata for every mailbox name
-        for (var i=0; i < buffer.length; i++) {
-            listing.buffer.push(buffer[i]);
+        for (var i=0; i < lines.length; i++) {
+            listing.buffer.push(lines[i]);
+        }
 
-            var rec = imap.tokenizeData(buffer[i]),
-                mbox = rec.pop();
-
-            // don't query annotations for nonexistent folders
-            if (rec[2].indexOf('\\NonExistent') >= 0) {
-                listing.metadata[mbox] = '';
-                listing.annotations++;
-            }
-            else {
-                event.server.write('A' + seq + ' GETANNOTATION "' + mbox + '" "' +
-                    TYPE_ANNOTATION + '" ("value.priv" "value.shared")\r\n');
-            }
+        // we already collected all annotations, send the (filtered) response to the client
+        if (metadata[id]) {
+            sendFilteredList(id, 'A' + seq, event);
+        }
+        else {
+            // fetch all folder annotations in one go
+            metadata[id] = {};
+            event.server.write('A' + seq + ' GETANNOTATION "*" "' + TYPE_ANNOTATION + '" ("value.priv" "value.shared")\r\n');
         }
 
         return true;
     }
 
     /**
-     * Process the given folder annotation response
+     * Filter and send the buffered list for the given sequence tag
      */
-    function processAnnotation(id, seq, mbox, metadata, event)
+    function sendFilteredList(id, seq, event)
     {
         var req, listing;
         if ((req = proc[id]) && (listing = req.listings[seq])) {
-            // store folder metadata
-            listing.metadata[mbox] = metadata;
-            listing.annotations++;
+            proxy.config.debug_log && console.log("Mailonly filter:", listing.buffer, metadata[id]);
 
-            // TODO: keep mailbox annotations in memory for subsequent requests (e.g. XLIST + LSUB)
+            var list = [];
+            for (var i=0; i < listing.buffer.length; i++) {
+                var rec = imap.tokenizeData(listing.buffer[i]),
+                    mbox = rec.pop(),
+                    type = metadata[id][mbox];
 
-            // we collected all annotations, finally send the (filtered) LSUB response to the client
-            if (listing.annotations >= listing.buffer.length) {
-                proxy.config.debug_log && console.log("Mailonly filter:", listing.buffer, listing.metadata);
-
-                var list = [];
-                for (var i=0; i < listing.buffer.length; i++) {
-                    var rec = imap.tokenizeData(listing.buffer[i]),
-                        mbox = rec.pop(),
-                        type = listing.metadata[mbox];
-
-                    if (!type || type == 'mail' || type == 'NIL') {
-                        list.push(listing.buffer[i]);
-                    }
+                if (!type || type == 'mail' || type == 'NIL') {
+                    list.push(listing.buffer[i]);
                 }
+            }
 
-                // send filtered list as response to the client
-                event.result = list.join("\r\n")  + "\r\n" +
-                    listing.seq + " OK Completed (filtered by IMAProxy)\r\n";
+            // send filtered list as response to the client
+            event.result = list.join("\r\n")  + "\r\n" +
+                listing.seq + " OK Completed (filtered by IMAProxy)\r\n";
 
-                delete req.listings[seq];  // destroy listing job
-                req.pending--;
+            // destroy listing job
+            listingDone(id, seq);
+        }
+    }
 
-                // all done
-                if (req.pending == 0)
-                    delete proc[id];
+    /**
+     * Terminate a buffered listing command and remporarily stored data
+     */
+    function listingDone(id, seq)
+    {
+        var req;
+        if ((req = proc[id]) && req.listings[seq]) {
+            // destroy listing job
+            delete req.listings[seq];
+            req.pending--;
 
-                // TODO: remove serverEmitter listeners if no further jobs pending
+            // all done for this connection, suspend response capturing
+            if (req.pending == 0) {
+                delete proc[id];
             }
         }
-        // not a response to our internal queries
-        else {
-            event.write = true;
-        }
+    }
+
+    /**
+     * Handler for client disconnect
+     */
+    function clientDisconnect(event)
+    {
+        delete proc[event.state.ID];
+        delete metadata[event.state.ID];
+
+        // TODO: remove serverEmitter listeners if no further jobs pending
     }
 
 }
