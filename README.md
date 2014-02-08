@@ -46,7 +46,6 @@ TODOs
 -----
 
 * Configurable logging output (maybe a plugin?)
-* Emit connection events to plugins
 * Spawn and manage multiple processes using the [cluser][cluster] module
 * STARTTLS support for client connections
 * Unit tests

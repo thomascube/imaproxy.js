@@ -129,7 +129,7 @@ function IMAProxy(config)
             var event = extend_event(parseIMAPCommand(data));
             clientEmitter.emit(event.command, event, data);
             if (event.command != '__DATA__') {
-                clientEmitter.emit('*', event, data);
+                clientEmitter.emit('__DATA__', event, data);
             }
 
             DEBUG_LOG && console.log(RED_CCODE + prefix + " C: <" + event.command + ">");
@@ -157,8 +157,13 @@ function IMAProxy(config)
                 state.isConnected = false;
                 connectionToServer.end();
             }
+            var event = extend_event({});
+            clientEmitter.emit('__DISCONNECT__', event);
         });
 
+        // emit client connection event
+        var e = extend_event({});
+        clientEmitter.emit('__CONNECT__', e);
 
         // Now that we have a client on the line, make a connection to the IMAP server.
         state.conn = new net.Socket();
@@ -223,10 +228,15 @@ function IMAProxy(config)
                 state.isConnected = false;
                 connectionToClient.end();
             }
+            var event = extend_event({});
+            serverEmitter.emit('__DISCONNECT__', event);
         });
 
         // connect to IMAP server
-        state.conn.connect(imap_server.port, imap_server.hostname);
+        state.conn.connect(imap_server.port, imap_server.hostname, function(){
+            var e = extend_event({});
+            serverEmitter.emit('__CONNECT__', e);
+        });
     }
 
     /**
