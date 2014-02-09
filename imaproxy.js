@@ -236,6 +236,10 @@ function IMAProxy(config)
         state.conn.connect(imap_server.port, imap_server.hostname, function(){
             var e = extend_event({});
             serverEmitter.emit('__CONNECT__', e);
+
+            if (config.keep_alive) {
+                state.conn.setKeepAlive(true, config.keep_alive * 1000);
+            }
         });
     }
 

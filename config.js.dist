@@ -13,6 +13,9 @@ module.exports = {
     // local port to bind the proxy to
     bind_port: 9993,
 
+    // keep-alive interval (in seconds) on server connection
+    keep_alive: 180,
+
     // create server with SSL
     ssl: true,
     ssl_key:  './ssl/host.key',
