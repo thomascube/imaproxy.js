@@ -109,7 +109,7 @@ function IMAProxy(config)
     function clientListener(connectionToClient)
     {
         // This callback is run when the server gets a connection from a client.
-        var connectionToServer, state = { ID: ++ID_COUNT, isConnected: true }, prefix = "[" + state.ID + "] ";
+        var connectionToServer, state = { ID: ++ID_COUNT, isConnected: true }, prefix = "[" + state.ID + "] ", client_buffer = '';
         CONN_LOG && console.log(WHITE_CCODE + prefix + "* Connection established from " + connectionToClient.remoteAddress + ":" + connectionToClient.remotePort);
 
         // print TLS connection details
@@ -125,8 +125,21 @@ function IMAProxy(config)
         }
 
         connectionToClient.on("data", function(data) {
+            var cmd = parseIMAPCommand(data);
+
+            // buffer short inputs leading to split tags (observed with Apple Mail)
+            if (!cmd.write) {
+                client_buffer += data.toString();
+                return;
+            }
+            else if (client_buffer.length) {
+                // concatenate buffered string with current data
+                data = Buffer.concat([new Buffer(client_buffer), data]);
+                client_buffer = '';
+            }
+
             // emit events with client data
-            var event = extend_event(parseIMAPCommand(data));
+            var event = extend_event(cmd);
             clientEmitter.emit(event.command, event, data);
             if (event.command != '__DATA__') {
                 clientEmitter.emit('__DATA__', event, data);
@@ -188,8 +201,11 @@ function IMAProxy(config)
                 return;
             }
 
+            var cmd = parseIMAPCommand(data);
+            cmd.write = true;  // always send by default
+
             // emit events with server data
-            var event = extend_event(parseIMAPCommand(data));
+            var event = extend_event(cmd);
             serverEmitter.emit(event.command, event, data);
             if (event.command != '__DATA__') {
                 serverEmitter.emit('__DATA__', event, data);
@@ -273,7 +289,8 @@ function IMAProxy(config)
      */
     function parseIMAPCommand(data)
     {
-        var lines = data.toString().split(/\r?\n/),
+        var str = data.toString('utf8', 0, 256),
+            lines = str.split(/\r?\n/),
             tokens = String(lines[0]).split(/ +/),
             cmd = { seq: 0, command: '__DATA__', write: true };
 
@@ -283,6 +300,10 @@ function IMAProxy(config)
         }
         else if (tokens.length == 1 && tokens[0].match(/^[a-z]+$/i)) {
             cmd.command = tokens[0].toUpperCase();
+        }
+        else if (tokens.length == 1 && lines.length == 1 && str.length < 10) {
+            // incomplete tag, don't forward to receiver
+            cmd.write = false;
         }
 
         // UID X command
