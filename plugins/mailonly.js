@@ -49,22 +49,46 @@ function Mailonly(proxy)
         proxy.clientEmitter.on('LIST', clientList);
         proxy.clientEmitter.on('XLIST', clientList);
         proxy.clientEmitter.on('__DISCONNECT__', clientDisconnect);
+        proxy.serverEmitter.on('OK', OKResponse);
         proxy.serverEmitter.once('CAPABILITY', capabilityResponse);
+    }
+
+    /**
+     * Handle OK responses which might have Capabilities appended
+     */
+    function OKResponse(event, data)
+    {
+        var response = imap.parseResponse(data);
+        if (response.lines[0].match(/\[CAPABILITY\s/)) {
+            parseCapabilities(response.lines[0].replace(/\sOK/, '').replace(/\[|\]/i, ''))
+            if (capabilities['SORT'] || capabilities['ANNOTATEMORE']) {
+                proxy.serverEmitter.removeListener('OK', OKResponse);
+            }
+        }
+    }
+
+    /**
+     * Handle CAPABILITY response
+     */
+    function capabilityResponse(event, data)
+    {
+        var response = imap.parseResponse(data);
+
+        if (response.status == 'OK') {
+            parseCapabilities(response.lines[0]);
+            proxy.serverEmitter.removeListener('OK', OKResponse);
+        }
     }
 
     /**
      * Parse IMAP server capabilities
      */
-    function capabilityResponse(event, data)
+    function parseCapabilities(line)
     {
-        var response = imap.parseResponse(data),
-            caps = imap.explodeQuotedString(response.lines[0], " ");
-
-        if (response.status == 'OK') {
-            for (var c, i=2; i < caps.length; i++) {
-                c = caps[i].split('=');
-                capabilities[c[0]] = c[1] || true;
-            }
+        var caps = imap.explodeQuotedString(line, " ");
+        for (var c, i=2; i < caps.length; i++) {
+            c = caps[i].split('=');
+            capabilities[c[0]] = c[1] || true;
         }
     }
 
