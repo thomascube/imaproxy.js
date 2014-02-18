@@ -60,7 +60,7 @@ function Mailonly(proxy)
     {
         var response = imap.parseResponse(data);
         if (response.lines[0].match(/\[CAPABILITY\s/)) {
-            parseCapabilities(response.lines[0].replace(/\sOK/, '').replace(/\[|\]/i, ''))
+            parseCapabilities(response.lines[0].replace(/\sOK/, '').replace(/\[|\]/i, ''));
             if (capabilities['SORT'] || capabilities['ANNOTATEMORE']) {
                 proxy.serverEmitter.removeListener('OK', OKResponse);
             }
@@ -74,7 +74,7 @@ function Mailonly(proxy)
     {
         var response = imap.parseResponse(data);
 
-        if (response.status == 'OK') {
+        if (response.status === 'OK') {
             parseCapabilities(response.lines[0]);
             proxy.serverEmitter.removeListener('OK', OKResponse);
         }
@@ -85,8 +85,8 @@ function Mailonly(proxy)
      */
     function parseCapabilities(line)
     {
-        var caps = imap.explodeQuotedString(line, " ");
-        for (var c, i=2; i < caps.length; i++) {
+        var c, i, caps = imap.explodeQuotedString(line, " ");
+        for (i=2; i < caps.length; i++) {
             c = caps[i].split('=');
             capabilities[c[0]] = c[1] || true;
         }
@@ -107,13 +107,14 @@ function Mailonly(proxy)
         }
 
         // register new LSUB/LIST/XLIST request for this connection
-        if (!proc[event.state.ID])
+        if (!proc[event.state.ID]) {
             proc[event.state.ID] = { buffer:'', listings:{}, pending:0 };
+        }
 
-        var lines = data.toString().trim().split(/\r?\n/);
-        for (var i=0; i < lines.length; i++) {
-            var req = imap.tokenizeData(lines[i], 2),
-                listing = { seq: req[0], command: req[1], buffer: [] };
+        var i, req, listing, lines = data.toString().trim().split(/\r?\n/);
+        for (i=0; i < lines.length; i++) {
+            req = imap.tokenizeData(lines[i], 2);
+            listing = { seq: req[0], command: req[1], buffer: [] };
 
             proc[event.state.ID].listings['A' + listing.seq] = listing;
             proc[event.state.ID].pending++;
@@ -142,17 +143,17 @@ function Mailonly(proxy)
 
             // GETANNOTATION completed
             if (response.seq && req.listings[response.seq]) {
-                var lines = (req.buffer + data.toString()).trim().split(/\r?\n/);
-                for (var i=0; i < lines.length; i++) {
-                    var ann = imap.tokenizeData(lines[i], 5),
-                        values = ann[4] || [];
+                var i, ann, values, lines = (req.buffer + data.toString()).trim().split(/\r?\n/);
+                for (i=0; i < lines.length; i++) {
+                    ann = imap.tokenizeData(lines[i], 5);
+                    values = ann[4] || [];
 
-                    if (metadata[id] == undefined) {
+                    if (metadata[id] === undefined) {
                         metadata[id] = {};
                     }
 
                     // store folder type in global (per-connection) memory for subsequent requests (e.g. XLIST + LSUB)
-                    if (ann[1] == 'ANNOTATION' && ann[3] == TYPE_ANNOTATION && values.length) {
+                    if (ann[1] === 'ANNOTATION' && ann[3] === TYPE_ANNOTATION && values.length) {
                         metadata[id][ann[2]] = (values[1] || values[3] || '').replace(/\..+$/, '');
                     }
                 }
@@ -172,8 +173,9 @@ function Mailonly(proxy)
                     event.write = !processListing(id, response.seq, req.buffer, event);
 
                     // send all buffered data to client
-                    if (event.write && req.buffer)
+                    if (event.write && req.buffer) {
                         event.result = req.buffer;
+                    }
 
                     // clear buffer
                     req.buffer = '';
@@ -187,7 +189,7 @@ function Mailonly(proxy)
      */
     function processListing(id, seq, buffer, event)
     {
-        var req = proc[id], listing = req.listings['A' + seq],
+        var i, req = proc[id], listing = req.listings['A' + seq],
             lines = buffer.trim().split(/\r?\n/);
 
         // tag doesn't match an active listing command or response is empty
@@ -200,7 +202,7 @@ function Mailonly(proxy)
         lines.pop();
 
         // get metadata for every mailbox name
-        for (var i=0; i < lines.length; i++) {
+        for (i=0; i < lines.length; i++) {
             listing.buffer.push(lines[i]);
         }
 
@@ -226,13 +228,13 @@ function Mailonly(proxy)
         if ((req = proc[id]) && (listing = req.listings[seq])) {
             proxy.config.debug_log && console.log("Mailonly filter:", listing.buffer, metadata[id]);
 
-            var list = [];
-            for (var i=0; i < listing.buffer.length; i++) {
-                var rec = imap.tokenizeData(listing.buffer[i]),
-                    mbox = rec.pop(),
-                    type = metadata[id][mbox];
+            var i, rec, mbox, type, list = [];
+            for (i=0; i < listing.buffer.length; i++) {
+                rec = imap.tokenizeData(listing.buffer[i]);
+                mbox = rec.pop();
+                type = metadata[id][mbox];
 
-                if (!type || type == 'mail' || type == 'NIL') {
+                if (!type || type === 'mail' || type === 'NIL') {
                     list.push(listing.buffer[i]);
                 }
             }
@@ -258,7 +260,7 @@ function Mailonly(proxy)
             req.pending--;
 
             // all done for this connection, suspend response capturing
-            if (req.pending == 0) {
+            if (req.pending === 0) {
                 delete proc[id];
             }
         }

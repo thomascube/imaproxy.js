@@ -69,7 +69,7 @@ function IMAProxy(config)
             imap_server.hostname = imap_server.path;
         }
         if (!imap_server.port) {
-            imap_server.port = imap_server.protocol == 'tls:' || imap_server.protocol == 'ssl:' ? 993 : 143;
+            imap_server.port = imap_server.protocol === 'tls:' || imap_server.protocol === 'ssl:' ? 993 : 143;
         }
 
         CONN_LOG  = config.connection_log || true;
@@ -85,15 +85,15 @@ function IMAProxy(config)
         });
 
         // load modules that register event listeners
-        var files = fs.readdirSync('./plugins');
-        for (var k in files) {
+        var k, p, plugin, files = fs.readdirSync('./plugins');
+        for (k in files) {
             if (!files[k].match(/\.js$/)) {
                 continue;
             }
 
             try {
-                var plugin = require('./plugins/' + files[k]);
-                var p = new plugin(self);
+                plugin = require('./plugins/' + files[k]);
+                p = new plugin(self);
                 p.init();
                 plugins.push(p);
             }
@@ -132,7 +132,7 @@ function IMAProxy(config)
                 client_buffer += data.toString();
                 return;
             }
-            else if (client_buffer.length) {
+            if (client_buffer.length) {
                 // concatenate buffered string with current data
                 data = Buffer.concat([new Buffer(client_buffer), data]);
                 client_buffer = '';
@@ -141,7 +141,7 @@ function IMAProxy(config)
             // emit events with client data
             var event = extend_event(cmd);
             clientEmitter.emit(event.command, event, data);
-            if (event.command != '__DATA__') {
+            if (event.command !== '__DATA__') {
                 clientEmitter.emit('__DATA__', event, data);
             }
 
@@ -170,19 +170,17 @@ function IMAProxy(config)
                 state.isConnected = false;
                 connectionToServer.end();
             }
-            var event = extend_event({});
-            clientEmitter.emit('__DISCONNECT__', event);
+            clientEmitter.emit('__DISCONNECT__', extend_event({}));
         });
 
         // emit client connection event
-        var e = extend_event({});
-        clientEmitter.emit('__CONNECT__', e);
+        clientEmitter.emit('__CONNECT__', extend_event({}));
 
         // Now that we have a client on the line, make a connection to the IMAP server.
         state.conn = new net.Socket();
 
         // establish a SSL/TLS connection
-        if (imap_server.protocol == 'tls:' || imap_server.protocol == 'ssl:') {
+        if (imap_server.protocol === 'tls:' || imap_server.protocol === 'ssl:') {
             connectionToServer = tls.connect({
                     socket: state.conn,
                     rejectUnauthorized: !config.tls_nocheck_certs
@@ -207,7 +205,7 @@ function IMAProxy(config)
             // emit events with server data
             var event = extend_event(cmd);
             serverEmitter.emit(event.command, event, data);
-            if (event.command != '__DATA__') {
+            if (event.command !== '__DATA__') {
                 serverEmitter.emit('__DATA__', event, data);
             }
 
@@ -244,8 +242,7 @@ function IMAProxy(config)
                 state.isConnected = false;
                 connectionToClient.end();
             }
-            var event = extend_event({});
-            serverEmitter.emit('__DISCONNECT__', event);
+            serverEmitter.emit('__DISCONNECT__', extend_event({}));
         });
 
         // connect to IMAP server
@@ -298,16 +295,16 @@ function IMAProxy(config)
             cmd.seq = tokens[0];
             cmd.command = tokens[1].toUpperCase();
         }
-        else if (tokens.length == 1 && tokens[0].match(/^[a-z]+$/i)) {
+        else if (tokens.length === 1 && tokens[0].match(/^[a-z]+$/i)) {
             cmd.command = tokens[0].toUpperCase();
         }
-        else if (tokens.length == 1 && lines.length == 1 && str.length < 10) {
+        else if (tokens.length === 1 && lines.length === 1 && str.length < 10) {
             // incomplete tag, don't forward to receiver
             cmd.write = false;
         }
 
         // UID X command
-        if (cmd.command == 'UID') {
+        if (cmd.command === 'UID') {
             cmd.command += ' ' + String(tokens[2]).toUpperCase();
         }
 
