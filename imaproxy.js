@@ -125,7 +125,7 @@ function IMAProxy(config)
         }
 
         connectionToClient.on("data", function(data) {
-            var cmd = parseIMAPCommand(data);
+            var cmd = parseIMAPCommand(data, client_buffer);
 
             // buffer short inputs leading to split tags (observed with Apple Mail)
             if (!cmd.write) {
@@ -199,7 +199,7 @@ function IMAProxy(config)
                 return;
             }
 
-            var cmd = parseIMAPCommand(data);
+            var cmd = parseIMAPCommand(data, '');
             cmd.write = true;  // always send by default
 
             // emit events with server data
@@ -284,9 +284,9 @@ function IMAProxy(config)
      * Simple utility function to parse an IMAP command or response.
      * Extracts the actual command and the sequence number.
      */
-    function parseIMAPCommand(data)
+    function parseIMAPCommand(data, old_buffer)
     {
-        var str = data.toString('utf8', 0, 256),
+        var str = old_buffer + data.toString('utf8', 0, 256),
             lines = str.split(/\r?\n/),
             tokens = String(lines[0]).split(/ +/),
             cmd = { seq: 0, command: '__DATA__', write: true };
