@@ -40,15 +40,32 @@ Available Plugins
   listed to the clients. The folder type is determined by fetching
   /vendor/kolab/folder-type annotations from the IMAP server.
 
+* **zlogger.js**
+
+  Writes full IMAP payload to `console.log()` if enabled by the
+  `imap_log` config option.
 
 
 TODOs
 -----
 
-* Configurable logging output (maybe a plugin?)
+* ~~Configurable logging output (maybe a plugin?)~~
 * Spawn and manage multiple processes using the [cluser][cluster] module
 * STARTTLS support for client connections
-* Unit tests
+* Test with different IMAP clients
+* Stress testing
+
+
+Troubleshooting
+---------------
+
+For every client connection, the imaproxy needs to keep two socket connections
+open. You may therefore hit the limit of max. file descriptors per process.
+Increase `ulimit -n` accordingly.
+
+Further file descriptors are used when the proxy opens a new connection to
+the server and has to resolve the host name. This can be avoided and speeded
+up by configuring the IMAP server with its IP address instead of the host name.
 
 
 License

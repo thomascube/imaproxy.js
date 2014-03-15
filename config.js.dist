@@ -5,6 +5,7 @@
 module.exports = {
 
     // host name or URL to IMAP server
+    // use "ssl://<server>:<port>" for SSL connections
     imap_server: "localhost",
 
     // disable TLS certificate validation for connections to imap_server

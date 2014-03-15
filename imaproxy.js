@@ -39,15 +39,13 @@ var fs = require("fs"),
 function IMAProxy(config)
 {
     var ID_COUNT    = 0;
-    var GREEN_CCODE = '\x1b[0;32m';
-    var RED_CCODE   = '\x1b[0;31m';
     var WHITE_CCODE = '\x1b[0;37m';
-    var DEBUG_LOG   = false;
     var CONN_LOG    = true;
 
     var clientEmitter = new events.EventEmitter();
     var serverEmitter = new events.EventEmitter();
     var imap_server = url.parse(config.imap_server);
+    var connections = 0;
     var plugins = [];
     var self = this;
 
@@ -73,13 +71,11 @@ function IMAProxy(config)
         }
 
         CONN_LOG  = config.connection_log || true;
-        DEBUG_LOG = config.debug_log || false;
 
         // remove "DEFLATE" from capabilities (if present) so this proxy doesn't have to decompress stuff
         serverEmitter.on('CAPABILITY', function(event, data){
             var str = data.toString();
             if (str.match(/COMPRESS=DEFLATE/)) {
-                DEBUG_LOG && console.log(WHITE_CCODE + "[" + event.state.ID + "] * Proxy substitution: ", str);
                 event.result = str.replace("COMPRESS=DEFLATE ", "");
             }
         });
@@ -98,7 +94,7 @@ function IMAProxy(config)
                 plugins.push(p);
             }
             catch (e) {
-                console.warn("Failed to load plugin " + files[k], e);
+                console.error("Failed to load plugin " + files[k], e);
             }
         }
     }
@@ -108,9 +104,11 @@ function IMAProxy(config)
      */
     function clientListener(connectionToClient)
     {
+        connections++;
+
         // This callback is run when the server gets a connection from a client.
         var connectionToServer, state = { ID: ++ID_COUNT, isConnected: true }, prefix = "[" + state.ID + "] ", client_buffer = '';
-        CONN_LOG && console.log(WHITE_CCODE + prefix + "* Connection established from " + connectionToClient.remoteAddress + ":" + connectionToClient.remotePort);
+        CONN_LOG && console.log(WHITE_CCODE + prefix + "* Connection established from " + connectionToClient.remoteAddress + ":" + connectionToClient.remotePort + "; num connections: " + connections);
 
         // print TLS connection details
         if (CONN_LOG && connectionToClient.getCipher) {
@@ -145,22 +143,19 @@ function IMAProxy(config)
                 clientEmitter.emit('__DATA__', event, data);
             }
 
-            DEBUG_LOG && console.log(RED_CCODE + prefix + " C: <" + event.command + ">");
-
             if (event.result) {
-                DEBUG_LOG && console.log(RED_CCODE + prefix + " C: ", event.result);
                 connectionToServer.write(event.result);
             }
             else if (event.write) {
-                DEBUG_LOG && console.log(RED_CCODE + prefix + " C: ", data.toString());
                 connectionToServer.write(data);
             }
         });
 
-        connectionToClient.on("error", function(){
-            CONN_LOG && console.log(WHITE_CCODE + prefix + "* Client connection error!");
+        connectionToClient.on("error", function(e){
+            console.error(WHITE_CCODE + prefix + "* Client connection error!", e);
             if (state.isConnected) {
                 connectionToServer.end();
+                connections--;
             }
         });
 
@@ -169,6 +164,7 @@ function IMAProxy(config)
             if (state.isConnected) {
                 state.isConnected = false;
                 connectionToServer.end();
+                connections--;
             }
             clientEmitter.emit('__DISCONNECT__', extend_event({}));
         });
@@ -209,18 +205,11 @@ function IMAProxy(config)
                 serverEmitter.emit('__DATA__', event, data);
             }
 
-            DEBUG_LOG && console.log(GREEN_CCODE + prefix + " S: <" + event.command + ">");
-
             if (event.result) {
-                DEBUG_LOG && console.log(GREEN_CCODE + prefix + "S: ", event.result);
                 connectionToClient.write(event.result);
             }
             else if (event.write) {
-                DEBUG_LOG && console.log(GREEN_CCODE + prefix + "S: ", str);
                 connectionToClient.write(data);
-            }
-            else {
-                DEBUG_LOG && console.log(WHITE_CCODE + prefix + "X: ", str);
             }
         });
 
@@ -231,7 +220,7 @@ function IMAProxy(config)
         });
 
         connectionToServer.on("error", function(e){
-            console.log(WHITE_CCODE + prefix + "* Server connection error!", e);
+            console.error(WHITE_CCODE + prefix + "* Server connection error!", e);
             connectionToServer.destroy();
             connectionToClient.end();
         });
@@ -241,6 +230,7 @@ function IMAProxy(config)
             if (state.isConnected) {
                 state.isConnected = false;
                 connectionToClient.end();
+                connections--;
             }
             serverEmitter.emit('__DISCONNECT__', extend_event({}));
         });
