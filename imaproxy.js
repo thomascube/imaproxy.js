@@ -78,6 +78,21 @@ function IMAProxy(config)
             if (str.match(/COMPRESS=DEFLATE/)) {
                 event.result = str.replace("COMPRESS=DEFLATE ", "");
             }
+            if (str.match(/ SORT/)) {
+                event.state.capabilities = true;
+            }
+        });
+        // ... also intercept for OK [CAPABILITY ...] responses
+        serverEmitter.on('OK', function(event, data){
+            if (!event.state.capabilities) {
+                var str = data.toString();
+                if (str.match(/\[CAPABILITY\s/) && str.match(/\s(SORT|ANNOTATEMORE)/)) {
+                    if (str.match(/COMPRESS=DEFLATE/)) {
+                        event.result = str.replace("COMPRESS=DEFLATE ", "");
+                    }
+                    event.state.capabilities = true;
+                }
+            }
         });
 
         // load modules that register event listeners
@@ -107,7 +122,7 @@ function IMAProxy(config)
         connections++;
 
         // This callback is run when the server gets a connection from a client.
-        var connectionToServer, state = { ID: ++ID_COUNT, isConnected: true }, prefix = "[" + state.ID + "] ", client_buffer = '';
+        var connectionToServer, state = { ID: ++ID_COUNT, isConnected: true, capabilities: false }, prefix = "[" + state.ID + "] ", client_buffer = '';
         CONN_LOG && console.log(WHITE_CCODE + prefix + "* Connection established from " + connectionToClient.remoteAddress + ":" + connectionToClient.remotePort + "; num connections: " + connections);
 
         // print TLS connection details
@@ -142,6 +157,7 @@ function IMAProxy(config)
             if (event.command !== '__DATA__') {
                 clientEmitter.emit('__DATA__', event, data);
             }
+            clientEmitter.emit('__POSTDATA__', event, data);
 
             if (event.result) {
                 connectionToServer.write(event.result);
@@ -204,6 +220,7 @@ function IMAProxy(config)
             if (event.command !== '__DATA__') {
                 serverEmitter.emit('__DATA__', event, data);
             }
+            serverEmitter.emit('__POSTDATA__', event, data);
 
             if (event.result) {
                 connectionToClient.write(event.result);

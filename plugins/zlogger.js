@@ -41,8 +41,8 @@ function IMAPLog(proxy)
     function init()
     {
         if (DEBUG_LOG || DATA_LOG) {
-            proxy.clientEmitter.on('__DATA__', clientLog);
-            proxy.serverEmitter.on('__DATA__', serverLog);
+            proxy.clientEmitter.on('__POSTDATA__', clientLog);
+            proxy.serverEmitter.on('__POSTDATA__', serverLog);
         }
     }
 
@@ -50,7 +50,7 @@ function IMAPLog(proxy)
     {
         var prefix = "[" + event.state.ID + "] ";
         if (DEBUG_LOG) {
-            console.log(RED_CCODE + prefix + " C: <" + event.command + ">");
+            console.log(RED_CCODE + prefix + " C: " + event.seq + " <" + event.command + ">");
         }
         if (DATA_LOG) {
             if (event.result) {
@@ -66,16 +66,16 @@ function IMAPLog(proxy)
     {
         var prefix = "[" + event.state.ID + "] ";
         if (DEBUG_LOG) {
-            console.log(GREEN_CCODE + prefix + " S: <" + event.command + ">");
+            console.log(GREEN_CCODE + prefix + " S: " + event.seq + " <" + event.command + ">");
 
-            if (event.command = 'CAPABILITY') {
+            if (event.command == 'CAPABILITY') {
                 var str = data.toString();
                 if (str.match(/COMPRESS=DEFLATE/)) {
                     console.log(WHITE_CCODE + prefix + " * Proxy substitution: ", str);
                 }
             }
             if (!event.result && !event.write) {
-                console.log(WHITE_CCODE + prefix + "X: ", str);
+                console.log(WHITE_CCODE + prefix + "X: ", data.toString());
             }
         }
         if (DATA_LOG) {
