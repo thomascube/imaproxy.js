@@ -21,11 +21,14 @@
 
 "use strict";
 
+var cluster = require("cluster");
+
 /**
  * IMAP payload logging plugin
  */
 function IMAPLog(proxy)
 {
+    var PID = '';
     var GREEN_CCODE = '\x1b[0;32m';
     var RED_CCODE   = '\x1b[0;31m';
     var WHITE_CCODE = '\x1b[0;37m';
@@ -40,6 +43,8 @@ function IMAPLog(proxy)
      */
     function init()
     {
+        PID = cluster.isWorker ? cluster.worker.id + ':' : '';
+
         if (DEBUG_LOG || DATA_LOG) {
             proxy.clientEmitter.on('__POSTDATA__', clientLog);
             proxy.serverEmitter.on('__POSTDATA__', serverLog);
@@ -48,7 +53,7 @@ function IMAPLog(proxy)
 
     function clientLog(event, data)
     {
-        var prefix = "[" + event.state.ID + "] ";
+        var prefix = "[" + PID + event.state.ID + "] ";
         if (DEBUG_LOG) {
             console.log(RED_CCODE + prefix + " C: " + event.seq + " <" + event.command + ">");
         }
@@ -64,11 +69,11 @@ function IMAPLog(proxy)
 
     function serverLog(event, data)
     {
-        var prefix = "[" + event.state.ID + "] ";
+        var prefix = "[" + PID + event.state.ID + "] ";
         if (DEBUG_LOG) {
             console.log(GREEN_CCODE + prefix + " S: " + event.seq + " <" + event.command + ">");
 
-            if (event.command == 'CAPABILITY') {
+            if (event.command === 'CAPABILITY') {
                 var str = data.toString();
                 if (str.match(/COMPRESS=DEFLATE/)) {
                     console.log(WHITE_CCODE + prefix + " * Proxy substitution: ", str);

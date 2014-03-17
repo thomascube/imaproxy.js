@@ -50,9 +50,18 @@ TODOs
 -----
 
 * ~~Configurable logging output (maybe a plugin?)~~
-* Spawn and manage multiple processes using the [cluser][cluster] module
+* ~~Spawn and manage multiple processes using the [cluser][cluster] module~~
 * STARTTLS support for client connections
+* COMPRESS=DEFLATE support for client connections
 * Test with different IMAP clients
+  * Thunderbird ✓
+  * Apple Mail ✓
+  * iOS Mail ✓
+  * Microsoft Outlook
+  * Sparrow Mac
+  * Sparrow iOS
+  * Android Mail
+  * Android K9
 * Stress testing
 
 

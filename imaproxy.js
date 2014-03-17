@@ -31,13 +31,15 @@ var fs = require("fs"),
     tls = require("tls"),
     net = require("net"),
     url = require("url"),
-    events = require("events");
+    events = require("events"),
+    cluster = require("cluster");
 
 /**
  * IMAP proxy class
  */
 function IMAProxy(config)
 {
+    var PID = '';
     var ID_COUNT    = 0;
     var WHITE_CCODE = '\x1b[0;37m';
     var CONN_LOG    = true;
@@ -70,6 +72,7 @@ function IMAProxy(config)
             imap_server.port = imap_server.protocol === 'tls:' || imap_server.protocol === 'ssl:' ? 993 : 143;
         }
 
+        PID = cluster.isWorker ? cluster.worker.id + ':' : '';
         CONN_LOG  = config.connection_log || true;
 
         // remove "DEFLATE" from capabilities (if present) so this proxy doesn't have to decompress stuff
@@ -78,7 +81,7 @@ function IMAProxy(config)
             if (str.match(/COMPRESS=DEFLATE/)) {
                 event.result = str.replace("COMPRESS=DEFLATE ", "");
             }
-            if (str.match(/ SORT/)) {
+            if (str.match(/ (SORT|ANNOTATEMORE)/)) {
                 event.state.capabilities = true;
             }
         });
@@ -122,8 +125,9 @@ function IMAProxy(config)
         connections++;
 
         // This callback is run when the server gets a connection from a client.
-        var connectionToServer, state = { ID: ++ID_COUNT, isConnected: true, capabilities: false }, prefix = "[" + state.ID + "] ", client_buffer = '';
-        CONN_LOG && console.log(WHITE_CCODE + prefix + "* Connection established from " + connectionToClient.remoteAddress + ":" + connectionToClient.remotePort + "; num connections: " + connections);
+        var connectionToServer, state = { ID: ++ID_COUNT, isConnected: true, capabilities: false }, prefix = "[" + PID + state.ID + "] ", client_buffer = '';
+        CONN_LOG && console.log(WHITE_CCODE + prefix + "* Connection established from %s:%d; open connections: %d",
+            connectionToClient.remoteAddress, connectionToClient.remotePort, connections);
 
         // print TLS connection details
         if (CONN_LOG && connectionToClient.getCipher) {
@@ -283,7 +287,7 @@ function IMAProxy(config)
         }
 
         server.listen(config.bind_port, function() {
-            console.log(WHITE_CCODE + "* IMAP proxy is listening on port " + config.bind_port);
+            console.log(WHITE_CCODE + "* IMAP proxy" + (cluster.isWorker ? " (" + cluster.worker.id + ")" : '') + " is listening on port " + config.bind_port);
         });
     }
 
@@ -330,6 +334,27 @@ if (process.argv.length > 2) {
     configfile = process.argv[2];
 }
 
-var proxy = new IMAProxy(require(configfile));
-proxy.start();
+var config = require(configfile);
+
+// fork child processes
+if (cluster.isMaster && config.workers) {
+  for (var i = 0; i < config.workers; i++) {
+    cluster.fork();
+  }
+
+  cluster.on('exit', function(worker, code, signal) {
+    if (code !== 0) {
+        // restart a crashed child process
+        console.warn("* Worker %d (PID=%s) died with code %d. Restarting...", worker.id, worker.process.pid, code);
+        cluster.fork();
+    }
+    else {
+        console.log("Worker %d (PID=%s) exited with signal %s", worker.id, worker.process.pid, signal);
+    }
+  });
+}
+else {
+    var proxy = new IMAProxy(config);
+    proxy.start();
+}
 

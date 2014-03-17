@@ -23,6 +23,10 @@ module.exports = {
     ssl_cert: './ssl/localhost.crt',
     ssl_ca:   './ssl/localhost.crt',
 
+    // number of worker processes to spawn
+    // set to 0 to run in single-process mode
+    workers: 1,
+
     // log connections
     conn_log: true,
 
