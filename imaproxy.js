@@ -99,14 +99,14 @@ function IMAProxy(config)
         });
 
         // load modules that register event listeners
-        var k, p, plugin, files = fs.readdirSync('./plugins');
+        var k, p, plugin, files = fs.readdirSync(__dirname + '/plugins');
         for (k in files) {
             if (!files[k].match(/\.js$/)) {
                 continue;
             }
 
             try {
-                plugin = require('./plugins/' + files[k]);
+                plugin = require(__dirname + '/plugins/' + files[k]);
                 p = new plugin(self);
                 p.init();
                 plugins.push(p);
