@@ -77,6 +77,33 @@ the server and has to resolve the host name. This can be avoided and speeded
 up by configuring the IMAP server with its IP address instead of the host name.
 
 
+Install as a Daemon
+-------------------
+
+There are many ways how to daemonize node.js applications. Here's one approach using [pm2](https://github.com/Unitech/pm2):
+
+Install `pm2` globally:
+
+```
+$ npm install pm2 -g
+```
+
+Start a pm2 process using the configuration file:
+
+```
+$ pm2 start imaproxy.js -- /opt/imaproxy/config.js --name imaproxy
+```
+
+Use `pm2 --help` to see possible actions to monitor running node.js processes.
+
+In order to automatically run the imap proxy on startup, let `pm2` register a startup script for your platform:
+
+```
+$ pm2 startup
+$ pm2 save
+```
+
+
 License
 -------
 
